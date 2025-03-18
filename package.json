@@ -20,6 +20,7 @@
     "ejs": "^3.1.9",
     "express": "^4.21.2",
     "morgan": "^1.10.0",
+    "puppeteer": "^24.4.0",
     "xml-formatter": "^3.5.0"
   },
   "devDependencies": {
