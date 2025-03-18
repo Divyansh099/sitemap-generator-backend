@@ -1,44 +1,47 @@
+// server.js (Backend)
 const express = require('express');
-const bodyParser = require('body-parser');
+const puppeteer = require('puppeteer');
+const fs = require('fs');
 const path = require('path');
-const cors = require('cors');
-const sitemapRoutes = require('./routes/sitemap');
+const { SitemapStream, streamToPromise } = require('sitemap');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
-// Set up EJS as the view engine (for error pages)
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
+app.use(express.json());
 
-// CORS configuration
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || '*', // Allow requests from the frontend URL or all origins in development
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  credentials: true,
-  optionsSuccessStatus: 204
-};
-app.use(cors(corsOptions));
+// Route to generate sitemap
+app.post('/generate', async (req, res) => {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
 
-// Middleware
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+    try {
+        const browser = await puppeteer.launch({ headless: true });
+        const page = await browser.newPage();
+        await page.goto(url, { waitUntil: 'networkidle2' });
 
-// Health check endpoint for Render
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Server is running' });
+        const links = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('a'))
+                .map(a => a.href)
+                .filter(href => href.startsWith(window.location.origin));
+        });
+
+        await browser.close();
+
+        const sitemapStream = new SitemapStream({ hostname: url });
+        links.forEach(link => sitemapStream.write({ url: link, changefreq: 'daily', priority: 0.8 }));
+        sitemapStream.end();
+        
+        const sitemap = await streamToPromise(sitemapStream);
+        const filePath = path.join(__dirname, 'sitemap.xml');
+        fs.writeFileSync(filePath, sitemap);
+
+        res.download(filePath, 'sitemap.xml', () => {
+            fs.unlinkSync(filePath);
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to generate sitemap', details: error.message });
+    }
 });
 
-// Routes
-app.use('/', sitemapRoutes);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// Start the server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend API is running on port ${PORT}`);
-}); 
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

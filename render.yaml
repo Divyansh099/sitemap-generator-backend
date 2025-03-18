@@ -10,4 +10,4 @@ services:
         value: production
       - key: FRONTEND_URL
         # Replace this with your actual frontend URL once deployed
-        value: https://your-frontend-url.onrender.com 
+        value: https://website-scraping-frontend-7xbi47asf-divyansh099s-projects.vercel.app/
